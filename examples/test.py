@@ -2,20 +2,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pyEMLearn as eml
 #%%
+"""
+The system is:
+
+Injection Layer |  Layer 1  |  Layer 2   |  Layer 3  | Transmission Layer
+ Default (Air)  |   Silver  | Pc (d=2nm) |   Silver  |   BK7 Glass
+  L = infty     |  L = 45nm | L = 173nm  |  L = 45nm |   L = infty
+
+
+We simulate the absorption of this system in the visible range (500-750 nm)
+at a series of different angles of incidence (0-80 deg)
+
+"""
 
 system = eml.layers.System(
         [
-                eml.layers.Layer(
+                eml.layers.Layer( # Layer 1
                         eml.catalog.metals.Ag,
-                        0.045
+                        0.045 # um
                 ),
-                eml.layers.Layer(
+                eml.layers.Layer( # Layer 2
                         eml.catalog.dielectrics.Pcd2,
-                        0.173
+                        0.173 # um
                 ),
-                eml.layers.Layer(
+                eml.layers.Layer( # Layer 3
                         eml.catalog.metals.Ag,
-                        0.045
+                        0.045 # um
                 )
         ],
         transmission_layer=eml.layers.HalfInfiniteLayer(eml.catalog.dielectrics.BK7,injection=False)

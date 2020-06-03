@@ -1,4 +1,17 @@
-"""Docstring for module"""
+"""pyEMLearn layers module
+
+This module contains all objects relevent to actually simulating media using
+the Transfer/Scattering Matrix approach
+
+Classes
+-------
+Layer
+GapLayer(Layer)
+HalfInfiniteLayer(Layer)
+
+System
+
+"""
 
 #%%
 import numpy as np
@@ -6,14 +19,15 @@ import numpy as np
 from cmath import sqrt
 from numpy.linalg import inv
 
-#from scipy.optimize import minimize
-
 from pyEMLearn.utils import ScatteringMatrix,TransferMatrix
 from pyEMLearn.catalog.dielectrics import Air
 from pyEMLearn.catalog.special import Vacuum
 
 class Layer:
-    """Docstring for Class"""
+    """Class for the pyEMLearn.layers.Layer object
+
+    Base class for a layer of material, has finite thickness
+    """
     def __init__(self,material,thickness):
         """Base class for a layer of material, has finite thickness
 
@@ -47,7 +61,7 @@ class Layer:
         self.glay = gap_layer
 
     def solve(self,wl,kx,ky,slow=False):
-        """Initalizes layer at wavelenght and kvector (basically AOI)
+        """Calculates the E-field modes inside the layer
 
         Parameters
         ----------
@@ -91,7 +105,10 @@ class Layer:
             Q = np.array([[kx*ky,     ksq-kx**2],
                           [ky**2-ksq,  -kx*ky]])/self.mr
 
-            self.lam = np.vectorize(sqrt)(np.array([1j*self.kz,1j*self.kz])**2)#-1j*np.array([self.kz,self.kz])
+            # Must use sqrt((1j*kz)**2) to get consistent complex phase, when
+            #  kz takes a complex value. Using -1j*kz will create weird effects.
+            _lam = sqrt((1j*self.kz)**2)
+            self.lam = np.array([_lam,_lam])#-1j*np.array([self.kz,self.kz])
             self.W = np.eye(2)+0j
             self.W_inv = self.W.copy()
             self.V = Q @ np.diag(1/self.lam)
@@ -99,6 +116,14 @@ class Layer:
 
 
     def calculate_SM(self):
+        """Calculate the layer's scattering matrix
+
+        Note, the system must have had `.solve(...)` invoked before this
+        method can be called.
+
+        Returns
+        S : ScatteringMatrix
+        """
         self.S = ScatteringMatrix.for_symmetric_layer(
             W_inv = self.W_inv,
             V_inv = self.V_inv,
@@ -111,9 +136,15 @@ class Layer:
         return self.S
 
     def calculate_TM(self,Sg):
+        """Attaches the partial system transfer matrix for up to this layer
+        """
         self.T = Sg.get_TM()
 
     def solve_fields(self):
+        """Calculates the internal field propegation matricies: t, P(z) and C
+
+        """
+        # Convert gap mode coefficents to layer mode coefficents (jump the interface)
         self.t = TransferMatrix.for_interface(
             WL = self.glay.W,
             VL = self.glay.V,
@@ -121,24 +152,27 @@ class Layer:
             VR_inv = self.V_inv
         )
 
+        # Propegrate the layer modes internally (acrue phase)
         self.P = lambda _z: TransferMatrix.for_propegation(
             lam = self.lam,
             k0 = 2*np.pi/self.wl,
             z = _z
         )
 
+        # Convert layer mode coefficents to layer field coefficents
         self.C = TransferMatrix.for_conversion(
             W = self.W,
             V = self.V
         )
 
     def get_internal_field(self,z,c_in_left,c_out_left):
+        """Calculate the field inside the layer
+
+        Note, `.solve_fields(...)` must be called before this method can be used
+        """
         e = (self.T @ self.t @ self.P(z) @ self.C).transfer(c_in_left,c_out_left)[0]
         e = np.append(e,-(e[0] * self.kx + e[1] * self.ky) / self.kz)
         return e
-
-
-
 
 class GapLayer(Layer):
     """Docstring for Class"""
@@ -342,7 +376,7 @@ class System:
         self.trn.compile(self.glay)
         return self
 
-    def solve(self,wl,AOI,save_fields = False,slow=False):
+    def solve(self, wl, AOI, save_fields = False, slow = False):
         self.wl, self.AOI = wl, AOI
         n = self.inj.mat.n(wl)
         n = n[0]+n[1]*0j

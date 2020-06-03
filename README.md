@@ -1,19 +1,40 @@
 # pyEMLearn
 A computational E&amp;M library written in python, intended for learning the fundamentals
 
+# Installation
+`pyEMLearn` is available through `pip`:
+```bash
+ $ pip3 install pyEMLearn
+```
+(or just `pip` if you are on windows, or have aliased your `python3` installation)
 
 # Development
 To install toward developing this package: fork and download this repo from github, open a terminal in the head directory and run:
 ```bash
-python3 config.py install
+ $ python3 -m venv venv
+ $ source venv/bin/activate
+ (venv) $ pip install -r requirements.txt
+ (venv) $ python setup.py install
 ```
-(note, if you are on windows or using something like conda which aliases python3, substitute `python` for `python3`)
+This will create a virtual environment, activate it, install the required packages,
+then install the current version of `pyEMLearn` into your virtual environment.
 
-When you have finished developing, create a pull request through github.
+After you have made changes to the source code, re-run the last line to install
+your modified version.
+
+## Creating source packages
+```bash
+ $ python3 setup.py sdist bdist_wheel
+```
+
+## Uploading to PyPI
+```bash
+ $ python3 -m twine upload dist/*
+```
 
 ## Development Philosophy
-This package is really intended as a learning tool, rather than a full computational workhorse. As a result, much of the core code is *deliberately* inefficient so as to be more closely connected with the theory of the scattering (transfer) matrix methods. There are plenty of other computational E&amp;M libraries which are both more efficient and have more sophisticated features (like [EMpy](https://github.com/lbolla/EMpy), [EMUstack]( https://github.com/bjornsturmberg/EMUstack) and [Rigorous-Couple-Wave-Analysis](https://github.com/zhaonat/Rigorous-Coupled-Wave-Analysis)
-] to name a few). So, development in pyEMLearn will always prioritize user-clarity over code-efficiency.
+This package is really intended as a learning tool, rather than a full computational workhorse. As a result, much of the core code is *deliberately* inefficient so as to be more closely connected with the theory of the scattering (transfer) matrix methods. There are plenty of other computational E&amp;M libraries which are both more efficient and have more sophisticated features (like [`EMpy`](https://github.com/lbolla/EMpy), [`EMUstack`]( https://github.com/bjornsturmberg/EMUstack) and [`Rigorous-Couple-Wave-Analysis`](https://github.com/zhaonat/Rigorous-Coupled-Wave-Analysis)
+] to name a few). So, development in `pyEMLearn` will always prioritize user-clarity over code-efficiency.
 
 # Acknowledgements
 The authors would like to thank Dr. Raymond Rumpf (of UTEP) for his extensive [educational resources](https://empossible.net/academics/emp5337/), on which this project is principally based.
