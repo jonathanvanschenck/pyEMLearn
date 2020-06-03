@@ -33,3 +33,11 @@ for j,AOI in enumerate(AOIs):
         system.solve(wl,AOI*np.pi/180)
         R,T,A[j,i] = system.get_RTA(90*np.pi/180)
         PSI[j,i],DEL[j,i] = system.get_ellips()
+
+plt.figure()
+for i,aoi in enumerate(AOIs):
+    plt.plot(wls*1e3,A[i,:],label=r"$%d^{\degree}$" % int(aoi))
+plt.legend(title="AOI")
+plt.xlabel("Wavelength (nm)")
+plt.ylabel("Absorption (1-R-T)")
+plt.show()
