@@ -23,6 +23,15 @@ from pyEMLearn.utils import ScatteringMatrix,TransferMatrix
 from pyEMLearn.catalog.dielectrics import Air
 from pyEMLearn.catalog.special import Vacuum
 
+# def inv(mat):
+#     a,b,c,d = mat[0,0],mat[0,1],mat[1,0],mat[1,1]
+#     D = a*d-b*c
+#     return np.array([
+#         [d,-b],
+#         [-c,a]
+#     ])/D
+
+
 class Layer:
     """Class for the pyEMLearn.layers.Layer object
 

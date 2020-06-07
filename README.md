@@ -40,22 +40,24 @@ This package is really intended as a learning tool, rather than a full computati
 The authors would like to thank Dr. Raymond Rumpf (of UTEP) for his extensive [educational resources](https://empossible.net/academics/emp5337/), on which this project is principally based.
 
 # To Do
- - [ ] Flesh out interface object with "t" matrix
- - [ ] Add interface object to layers objects (and halfplane objects)
+ - [ ] Add transmittance matrix approach
+ - [ ] Create `source` object, which can produce k-vecs and polarization vecs
+ - [ ] Create `field` object? which can track E, H and S?
+ - [ ] Begin thinking about RCWA
+# Old To Do
+ - [x] Flesh out interface object with "t" matrix
+ - [x] Add interface object to layers objects (and halfplane objects)
  - [ ] Modify utils objects to be more general
  - [ ] Change materials repr functions to NOT return parameters, put that in a "summary" function
  - [ ] Finish Docstring-ing
- - [ ] Restructure the materials catalog
+ - [x] Restructure the materials catalog
  - [ ] Add more asserts to System.__init__ to make sure that transmission layers arn't actually injection layers, or gap layers arn't actually just thickness zero layers, etc.
- - [ ] Improve computational efficiency for LHI materials? (using 2c.pdf)
+ - [x] Improve computational efficiency for LHI materials? (using 2c.pdf)
  - [ ] Spend some time making all the class variable names consistent in their case/-/_ usage
- - [ ] Add config and liscene files
- - [ ] Get Setup on PyPi
- - [ ] Restructure and flesh-out the material database
+ - [x] Add config and license files
+ - [x] Get Setup on PyPi
  - [ ] Add anisotropy functionality
- - [ ] Change examples over to jupyter
  - [ ] Make some better examples (bragg reflectors)
- - [ ] Think about PWA and RCWA as extensions
  - [ ] Add parallelization options for parameter sweep calculations
- - [ ] Add ellipsometric variable support
- - [ ] Add internal field support
+ - [x] Add ellipsometric variable support
+ - [x] Add internal field support

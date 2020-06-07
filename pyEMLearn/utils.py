@@ -8,7 +8,7 @@ from numpy import eye,diag,exp,zeros,array,append,\
                   sqrt,dot,cross,sin,cos,pi,arccos,\
                   arcsin, transpose
 from numpy import all as _all
-from numpy.linalg import inv, norm
+from numpy.linalg import inv, norm, det
 
 class Quaternion:
     def __init__(self,real,imag):
@@ -289,7 +289,12 @@ class ScatteringMatrix:
     def copy(self):
         """Returns a hard copy of the scattering matrix
         """
-        return ScatteringMatrix(self.S11,self.S12,self.S21,self.S22)
+        return ScatteringMatrix(self.S11.copy(),self.S12.copy(),self.S21.copy(),self.S22.copy())
+
+    def det(self):
+        """Returns the determinant of the scattering matrix
+        """
+        return det(vstack([hstack([self.S11,self.S12]),hstack([self.S21,self.S22])]))
 
     def get_TM(self):
         """Calculates the corresponding transfer matrix
@@ -358,7 +363,12 @@ class TransferMatrix:
     def copy(self):
         """Returns a hard copy of the transfer matrix
         """
-        return TransferMatrix(self.T11,self.T12,self.T21,self.T22)
+        return TransferMatrix(self.T11.copy(),self.T12.copy(),self.T21.copy(),self.T22.copy())
+
+    def det(self):
+        """Returns the determinant of the transfer matrix
+        """
+        return det(vstack([hstack([self.T11,self.T12]),hstack([self.T21,self.T22])]))
 
     def get_SM(self):
         """Calculates the corresponding scattering matrix
@@ -370,6 +380,10 @@ class TransferMatrix:
                 - T22inv @ self.T21,
                 T22inv
             )
+    @classmethod
+    def for_symmetric_layer(cls,W_inv,V_inv,Wg,Vg,lam,k0,L):
+        raise NotImplementedError
+
 
     @classmethod
     def for_interface(cls,WL,VL,WR_inv,VR_inv):
@@ -385,3 +399,19 @@ class TransferMatrix:
     @classmethod
     def for_conversion(cls,W,V):
         return cls(W,W,V,-V)
+
+# class PlaneWaveSource:
+#     def __init__(self,kx,ky,kz):
+#         self.kx, self.ky, self.kz = kx, ky, kz
+#
+#
+#     def pol_vec(self,AOI,azimuth=0):
+#         pass
+#
+#     @classmethod
+#     def from_AOI(cls):
+#         pass
+#
+#     @classmethod
+#     def from_AOI(cls):
+#         pass
