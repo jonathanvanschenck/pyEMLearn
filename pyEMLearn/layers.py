@@ -1,59 +1,17 @@
-"""pyEMLearn layers module
-
-This module contains all objects relevent to actually simulating media using
-the Transfer/Scattering Matrix approach
-
-Classes
--------
-Layer
-GapLayer(Layer)
-HalfInfiniteLayer(Layer)
-
-System
-
-"""
-
-#%%
 import numpy as np
 
-from cmath import sqrt
-from numpy.linalg import inv
-
-from pyEMLearn.utils import ScatteringMatrix,TransferMatrix
-from pyEMLearn.catalog.dielectrics import Air
+from pyEMLearn.core import sqrt, IX, nu, ModeSparse, TransferMatrixSparse,\
+                            FieldSparse, KVector, ModeDense, TransferMatrix,\
+                            FieldDense
 from pyEMLearn.catalog.special import Vacuum
-
-# def inv(mat):
-#     a,b,c,d = mat[0,0],mat[0,1],mat[1,0],mat[1,1]
-#     D = a*d-b*c
-#     return np.array([
-#         [d,-b],
-#         [-c,a]
-#     ])/D
-
+from pyEMLearn.catalog.dielectrics import Air
 
 class Layer:
-    """Class for the pyEMLearn.layers.Layer object
+    _Mode = lambda *args: ModeSparse(*args[1:])
+    _Field = lambda *args: FieldSparse(*args[1:])
+    _TransferMatrix = TransferMatrixSparse
 
-    Base class for a layer of material, has finite thickness
-    """
     def __init__(self,material,thickness):
-        """Base class for a layer of material, has finite thickness
-
-        Parameters
-        ----------
-        material : materials.Material
-            An instance of the materials.Material class which describes
-            the index of refaction (and permeability) of the layer.
-        thickness : float
-            The thickness of the layer. The unit of length given here
-            must match the unit expectected by materials.Material.n(),
-            which is typically um.
-
-        Returns
-        -------
-        None
-        """
         self.mat = material
         if self.mat.name is None:
             self.name = self.mat.__class__.__name__
@@ -61,186 +19,67 @@ class Layer:
             self.name = self.mat.name
         self.L = thickness
         self.isFinite = True
-
+        self.isSparse = True
 
     def __repr__(self):
         return "<Layer: {0}: L = {1}>".format(self.name,self.L)
 
     def compile(self,gap_layer):
         self.glay = gap_layer
+        return self
 
-    def solve(self,wl,kx,ky,slow=False):
-        """Calculates the E-field modes inside the layer
+    def solve(self,kvec):
+        self.k = kvec
+        self.er = self.mat.er_vec(kvec.wls)
+        self.mr = self.mat.mr_vec(kvec.wls)
+        self.mode = self._Mode(kvec).solve(self.er,self.mr)
+        return self
 
-        Parameters
-        ----------
-        wl : float
-            The (vacuum) wavelength of light passing through the layer.
-            The units of length must match that expected by self.mat.n(),
-            which is typically um.
-        kx : float
-            The x componenet of the dimensionless k-vector inside the layer.
-        ky : float
-            The y componenet of the dimensionless k-vector inside the layer.
-
-        Returns
-        -------
-        None
-        """
-        self.wl,self.kx,self.ky = wl,kx,ky
-        self.er = self.mat.er(wl)
-        self.mr = self.mat.mr(wl)
-        ksq = self.er*self.mr
-
-        self.kz = sqrt(ksq-kx**2-ky**2)
-
-
-        if slow:
-            P = np.array([[kx*ky,       ksq-kx**2],
-                           [ky**2-ksq,   -kx*ky]])/self.er
-
-            Q = np.array([[kx*ky,     ksq-kx**2],
-                          [ky**2-ksq,  -kx*ky]])/self.mr
-
-            Osq = P @ Q
-
-            lamsq, self.W = np.linalg.eig(Osq)
-            self.lam = np.vectorize(sqrt)(lamsq)
-
-            self.V = Q @ self.W @ inv(np.diag(self.lam))
-
-            self.W_inv, self.V_inv = inv(self.W), inv(self.V)
-        else:
-            Q = np.array([[kx*ky,     ksq-kx**2],
-                          [ky**2-ksq,  -kx*ky]])/self.mr
-
-            # Must use sqrt((1j*kz)**2) to get consistent complex phase, when
-            #  kz takes a complex value. Using -1j*kz will create weird effects.
-            _lam = sqrt((1j*self.kz)**2)
-            self.lam = np.array([_lam,_lam])#-1j*np.array([self.kz,self.kz])
-            self.W = np.eye(2)+0j
-            self.W_inv = self.W.copy()
-            self.V = Q @ np.diag(1/self.lam)
-            self.V_inv = inv(self.V)
-
-
-    def calculate_SM(self):
-        """Calculate the layer's scattering matrix
-
-        Note, the system must have had `.solve(...)` invoked before this
-        method can be called.
-
-        Returns
-        S : ScatteringMatrix
-        """
-        self.S = ScatteringMatrix.for_symmetric_layer(
-            W_inv = self.W_inv,
-            V_inv = self.V_inv,
-            Wg = self.glay.W,
-            Vg = self.glay.V,
-            lam = self.lam,
-            k0 = 2*np.pi/self.wl,
+    def calculate_TM(self):
+        # trasfers left gap modes to right gap modes
+        self.T = self._TransferMatrix.for_symmetric_layer(
+            mode = self.mode,
+            mode_gap = self.glay.mode,
             L = self.L
         )
-        return self.S
+        return self
 
-    def calculate_TM(self,Sg):
-        """Attaches the partial system transfer matrix for up to this layer
-        """
-        self.T = Sg.get_TM()
-
-    def solve_fields(self):
-        """Calculates the internal field propegation matricies: t, P(z) and C
-
-        """
-        # Convert gap mode coefficents to layer mode coefficents (jump the interface)
-        self.t = TransferMatrix.for_interface(
-            WL = self.glay.W,
-            VL = self.glay.V,
-            WR_inv = self.W_inv,
-            VR_inv = self.V_inv
+    def save_field(self,Tsub):
+        # Tsub is the transfer matrix from the injection layer to the left gap
+        # T_inj_to_inside is the transfer matrix from the injection layer to inside
+        self.T_inj_to_inside = Tsub @ self._TransferMatrix.for_interface(
+            modeL = self.glay.mode,
+            modeR = self.mode
         )
+        self.field = self._Field(self.mode)
 
-        # Propegrate the layer modes internally (acrue phase)
-        self.P = lambda _z: TransferMatrix.for_propegation(
-            lam = self.lam,
-            k0 = 2*np.pi/self.wl,
-            z = _z
-        )
+        return self
 
-        # Convert layer mode coefficents to layer field coefficents
-        self.C = TransferMatrix.for_conversion(
-            W = self.W,
-            V = self.V
-        )
-
-    def get_internal_field(self,z,c_in_left,c_out_left):
-        """Calculate the field inside the layer
-
-        Note, `.solve_fields(...)` must be called before this method can be used
-        """
-        e = (self.T @ self.t @ self.P(z) @ self.C).transfer(c_in_left,c_out_left)[0]
-        e = np.append(e,-(e[0] * self.kx + e[1] * self.ky) / self.kz)
-        return e
+    def get_field(self, z, c_inj_p, c_inj_m):
+        # z is measured from the left edge of layer
+        # c_inj_p and c_inj_m are the mode coefs inside the injection layer
+        try:
+            c_p,c_m = self.T_inj_to_inside.transfer(c_inj_p, c_inj_m)
+            return self.field.get_field_vec(z, c_p, c_m)
+        except AttributeError as E:
+            raise AttributeError("Internal fields for {} are not saved".format(self.__repr__())) from E
 
 class GapLayer(Layer):
-    """Docstring for Class"""
     def __init__(self,material=Vacuum):
-        """Layer class to for gap material
-
-        The gap material is used as to normalized the
-        calculations of scattering matricies for regular
-        layers in a system. Essentially, the layers are
-        symmetrically surrounded by this gap material,
-        which has thickness 0.0--which definitionally
-        will have no impact on the global optics. But
-        we gain simplicity in that all layers see a
-        symmetric environment (the gaps) rather than the
-        asymmetic environment (the other layers), which
-        leads to a much less complicated analytical solution.
-
-        Parameters
-        ----------
-        material : materials.Material, optional
-            An instance of the materials.Material class which describes
-            the index of refaction (and permeability) of the gap layer.
-            Default is vacuum.
-
-        Returns
-        -------
-        None
-        """
         Layer.__init__(self,material,0.0)
 
     def __repr__(self):
         return "<Gap Layer: {0}>".format(self.name)
 
-    def solve_fields(self):
+    def compile(self,glay):
         raise NotImplementedError
-    def get_internal_field(self,z,c_in_left,c_out_left):
+    def save_field(self,Tsub):
+        raise NotImplementedError
+    def get_field(self, z, c_inj_p, c_inj_m):
         raise NotImplementedError
 
 class HalfInfiniteLayer(Layer):
-    """Docstring for Class"""
     def __init__(self,material,injection=True):
-        """Base class for the injection/transmission layers, is assumed
-        to semi infinite.
-
-        Parameters
-        ----------
-        material : materials.Material
-            An instance of the materials.Material class which describes
-            the index of refaction (and permeability) of the layer.
-        injection : bool, optional
-            When true, the layer is to be treated as an "injection"
-            layer (meaning semi-infinite in the negative direction). If
-            false, the layer is treated as a "tranmission" layer (meaning
-            semi-infinite in the positive direction). Default is True.
-
-        Returns
-        -------
-        None
-        """
         Layer.__init__(self,material,np.inf)
         self.injection = injection
         if self.injection:
@@ -252,84 +91,90 @@ class HalfInfiniteLayer(Layer):
     def __repr__(self):
         return "<{0} Layer: {1}>".format(self.direction,self.name)
 
-    def calculate_SM(self):
+
+    def calculate_TM(self):
         if self.injection:
-            self.S = ScatteringMatrix.for_interface(
-                WL = self.W,
-                VL = self.V,
-                WR_inv = self.glay.W_inv,
-                VR_inv = self.glay.V_inv
+            # transfer injection modes to right gap modes
+            self.T = self._TransferMatrix.for_interface(
+                modeL = self.mode,
+                modeR = self.glay.mode
             )
         else:
-            self.S = ScatteringMatrix.for_interface(
-                WL = self.glay.W,
-                VL = self.glay.V,
-                WR_inv = self.W_inv,
-                VR_inv = self.V_inv
+            # transfer left gap modes to internal modes for transmission
+            self.T = self._TransferMatrix.for_interface(
+                modeL = self.glay.mode,
+                modeR = self.mode
             )
-        return self.S
 
-    def calculate_TM(self,Sg=None):
+        return self
+
+    def save_field(self,Tsub):
+        # Tsub is the transfer matrix from the injection layer to the left gap
+        # T_inj_to_inside is the transfer matrix from the injection layer to inside
         if self.injection:
-            self.T = TransferMatrix(
-                np.eye(2) + 0j,
-                np.zeros((2,2)) + 0j,
-                np.zeros((2,2)) + 0j,
-                np.eye(2) + 0j
-            )
+            self.T_inj_to_inside = TransferMatrixSparse.for_null(2*self.k.kx.size)
         else:
-            self.T = Sg.get_TM()
+            self.T_inj_to_inside = Tsub @ TransferMatrixSparse.for_interface(
+                modeL = self.glay.mode,
+                modeR = self.mode
+            )
+        self.field = FieldSparse(self.mode)
 
-    def solve_fields(self):
-        self.P = lambda _z: TransferMatrix.for_propegation(
-            lam = self.lam,
-            k0 = 2*np.pi/self.wl,
-            z = _z
-        )
+        return self
 
-        self.C = TransferMatrix.for_conversion(
-            W = self.W,
-            V = self.V
-        )
+class LayerPeriodic(Layer):
+    _Mode = lambda *args: ModeDense(*args[1:])
+    _Field = lambda *args: FieldDense(*args[1:])
+    _TransferMatrix = TransferMatrix
 
-    def get_internal_field(self,z,c_in_left,c_out_left):
-        e = (self.T @ self.P(z) @ self.C).transfer(c_in_left,c_out_left)[0]
-        e = np.append(e,-(e[0] * self.kx + e[1] * self.ky) / self.kz)
-        return e
+    def __init__(self,material,thickness,Lambda_x,Lambda_y):
+        Layer.__init__(self,material,thickness)
+        self.Lx, self.Ly = Lambda_x, Lambda_y
+        self.isSparse = False
+
+    def solve(self,kvec):
+        # note kvec must be generated using .from_periodic(...) method
+
+        self.k = kvec
+        self.ER_rs = self.mat.er(
+            kvec.wls[0],
+            kvec.X.flatten(),
+            kvec.Y.flatten()
+        ).reshape(kvec.X.shape)
+        self.MR_rs = self.mat.mr(
+            kvec.wls[0],
+            kvec.X.flatten(),
+            kvec.Y.flatten()
+        ).reshape(kvec.X.shape)
+
+        self.ER_fs = np.fft.fftshift(np.fft.fft2(self.ER_rs))/len(kvec.kx) # check
+        self.MR_fs = np.fft.fftshift(np.fft.fft2(self.MR_rs))/len(kvec.kx) # check
+
+        S = kvec.X.shape[0]*kvec.X.shape[1]
+        self.ER_mat = np.array([[
+                    self.ER_fs[tuple(IX(nup,kvec.N,kvec.M)-IX(nupp,kvec.N,kvec.M))]\
+                for nupp in range(S)] for nup in range(S)])
+        self.MR_mat = np.array([[
+                    self.MR_fs[tuple(IX(nup,kvec.N,kvec.M)-IX(nupp,kvec.N,kvec.M))]\
+                for nupp in range(S)] for nup in range(S)])
+
+        self.mode = self._Mode(kvec).solve(self.ER_mat,self.MR_mat)
+
+        return self
 
 class System:
-    """Docstring for Class"""
     def __init__(self,layer_list=None,
-                 injection_layer=None,
-                 transmission_layer=None,
-                 gap_layer=None):
-        """Base class to describe as solve a system of layers
+                 injection_material=None,
+                 transmission_material=None,
+                 gap_material=None):
 
-        The system is composed of a semi-infinite injection layer (from which light is
-        incident), a stack of (potentially zero) intermediate layers of finite
-
-        <MORE!>
-        """
         if layer_list is None:
             self.layers = []
         else:
-            for l in layer_list:
-                assert l.isFinite, "Layer Must be finte"
             self.layers = layer_list
-        if injection_layer is None:
-            self.inj = HalfInfiniteLayer(Air,True)
-        else:
-            assert not injection_layer.isFinite, "Injection Layer Must be semi-infinte"
-            self.inj = injection_layer
-        if transmission_layer is None:
-            self.trn = HalfInfiniteLayer(Air,False)
-        else:
-            assert not transmission_layer.isFinite, "Transmission Layer Must be semi-infinte"
-            self.trn = transmission_layer
-        if gap_layer is None:
-            self.glay = GapLayer()
-        else:
-            self.glay = gap_layer
+        self.inj = HalfInfiniteLayer(injection_material or Air,True)
+        self.trn = HalfInfiniteLayer(transmission_material or Air,False)
+        self.glay = GapLayer(gap_material or Vacuum)
 
     def __repr__(self):
         res = "<System:\n"
@@ -364,93 +209,139 @@ class System:
         raise StopIteration
 
 
-    def add_layer(self,layer,injection=False,transmission=False,gap=False):
-        if injection:
-            assert not layer.isFinite, "Injection layer must be semi-infinte"
-            self.inj = layer
-        elif transmission:
-            assert not layer.isFinite, "Transmission layer must be semi-infinte"
-            self.trn = layer
-        elif gap:
-            assert layer.L == 0.0, "Gap layer must have zero thickness"
-            self.glay = layer
-        else:
-            assert layer.isFinite, "Layer must be finte"
-            self.layers += [layer]
+    def add_layer(self,layer):
+        self.layers += [layer]
 
     def compile(self):
+        self.Lx,self.Ly = [],[]
+        self.isPeriodic = False
         for lay in self.layers:
             lay.compile(self.glay)
+            if isinstance(lay,LayerPeriodic):
+                self.Lx.append(lay.Lx)
+                self.Ly.append(lay.Ly)
+                self.isPeriodic = True
+        assert len(list(set(self.Lx))) < 2 and len(list(set(self.Ly))) < 2,\
+            "Cannot compile system with multiple periodic layers of inconsistent dimensions"
         self.inj.compile(self.glay)
         self.trn.compile(self.glay)
+
+        self.left_edges = np.cumsum([0.0]+[l.L for l in self.layers])
+
         return self
 
-    def solve(self, wl, AOI, save_fields = False, slow = False):
-        self.wl, self.AOI = wl, AOI
-        n = self.inj.mat.n(wl)
-        n = n[0]+n[1]*0j
-        kx = n*np.sin(AOI)
-        ky = 0.0j
+    def solve(self, wls, aoi, save_field = False):
+        assert not self.isPeriodic, "System includes periodic layer(s), must use .solve_periodic(...)"
+        self.k = KVector.from_AOI(wls, aoi, self.inj.mat)
+        self._solve(save_field = save_field)
 
-        self.glay.solve(wl,kx,ky,slow=slow)
-        self.inj.solve(wl,kx,ky,slow=slow)
-        if save_fields:
-            self.inj.calculate_TM()
-        self.Sg = self.inj.calculate_SM().copy()
+    def solve_periodic(self, wl, aoi, N, M, save_field = False):
+        self.k = KVector.from_periodic(wl,aoi,self.inj.mat,self.Lx[0],self.Ly[0],N,M)
+        self._solve(save_field = save_field)
+
+    def _solve(self, save_field):
+        self.glay.solve(self.k)
+
+        self.Tcumprod = []
+
+        self.inj.solve(self.k).calculate_TM()
+        self.Tcumprod.append(self.inj.T)
+
         for lay in self.layers:
-            lay.solve(wl,kx,ky,slow=slow)
-            if save_fields:
-                lay.calculate_TM(self.Sg)
-            self.Sg = self.Sg @ lay.calculate_SM()
-        self.trn.solve(wl,kx,ky,slow=slow)
-        self.Sg = self.Sg @ self.trn.calculate_SM()
-        if save_fields:
-            self.trn.calculate_TM(self.Sg)
+            lay.solve(self.k).calculate_TM()
+            self.Tcumprod.append(self.Tcumprod[-1] @ lay.T)
+
+        self.trn.solve(self.k).calculate_TM()
+        self.Tcumprod.append(self.Tcumprod[-1] @ self.trn.T)
+
+        self.S = self.Tcumprod[-1].calculate_SM()
+
+        if save_field:
+            self._save_field()
 
         return self
 
-    def get_RTA(self,phase=0):
-        pol = np.array([np.sin(phase)*np.cos(self.AOI),np.cos(phase)])
-        self.e_inj = self.Sg.S11 @ pol
-        E_z = -(self.e_inj[0]*self.inj.kx+self.e_inj[1]*self.inj.ky)/self.inj.kz
-        E_ref = np.append(self.e_inj,E_z)
-        self.R = np.sum(np.abs(E_ref)**2)
-        self.e_trn = self.Sg.S21 @ pol
-        E_z = -(self.e_trn[0]*self.trn.kx+self.e_trn[1]*self.trn.ky)/self.trn.kz
-        E_trn = np.append(self.e_trn,E_z)
-        self.T = np.sum(np.abs(E_trn)**2)\
-                     *(self.inj.kz/self.inj.mat.mr(self.wl)).real\
-                     /(self.trn.kz/self.trn.mat.mr(self.wl)).real
-        self.A = 1-self.T-self.R
+    def get_incident_mode_coef(self,pol,phase=0):
+        # returns c_inj_p the internal mode coef for right waves in injection layer
+        # Assumes c_trn_m = 0
+        if self.isPeriodic:
+            index = len(self.k.kx)//2
+        else:
+            index = -1
+        Etilde_inj_p = self.k.get_incident_field_coef(pol,index=index)*np.exp(1j*phase)
+        return self.inj.mode.W_inv @ Etilde_inj_p
 
-        return self.R,self.T,self.A
+    def get_RT(self,pol):
+        c_inj_p = self.get_incident_mode_coef(pol)
+        # Assumes c_trn_m = 0
+        c_inj_m = np.asarray(self.S.S11 @ c_inj_p).flatten()
+        c_trn_p = np.asarray(self.S.S21 @ c_inj_p).flatten()
+
+        # print(c_inj_m.shape)
+
+        Etilde_inj_m, Htilde_inj_m = TransferMatrixSparse.for_mode_to_field(
+            mode = self.inj.mode
+        ).transfer(0*c_inj_p,c_inj_m)
+        n = len(Etilde_inj_m)//2
+        Ex_inj_m, Ey_inj_m = Etilde_inj_m[:n], Etilde_inj_m[n:]
+        Hx_inj_m, Hy_inj_m = Htilde_inj_m[:n], Htilde_inj_m[n:]
+
+        Ez_inj_m = 1j * self.inj.mode._eiky * Hx_inj_m\
+                    - 1j * self.inj.mode._eikx * Hy_inj_m
+
+        R = np.abs(Ex_inj_m)**2 + np.abs(Ey_inj_m)**2 + np.abs(Ez_inj_m)**2
+
+        Etilde_trn_p, Htilde_trn_p = TransferMatrixSparse.for_mode_to_field(
+            mode = self.trn.mode
+        ).transfer(c_trn_p,0*c_trn_p)
+
+        Ex_trn_p, Ey_trn_p = Etilde_trn_p[:n], Etilde_trn_p[n:]
+        Hx_trn_p, Hy_trn_p = Htilde_trn_p[:n], Htilde_trn_p[n:]
+
+        Ez_trn_p = 1j * self.trn.mode._eiky * Hx_trn_p\
+                    - 1j * self.trn.mode._eikx * Hy_trn_p
+
+        T = np.abs(Ex_trn_p)**2 + np.abs(Ey_trn_p)**2 + np.abs(Ez_trn_p)**2
+        kz_trn = sqrt(self.trn.er*self.trn.mr - self.k.kx**2 - self.k.ky**2)
+        T = T * (kz_trn/self.trn.mr).real / (self.k.kz_inj/self.inj.mr).real
+        # T = T * (self.k.kz_inj/self.inj.mr).real / (kz_trn/self.trn.mr).real
+
+        return R,T
 
     def get_ellips(self):
-        # Get Ellipsometric Variables
-        rho = (self.Sg.S11 @ np.array([0,1]))[1]/(self.Sg.S11 @ np.array([1,0]))[0]
-        self.PSI = np.arctan(np.abs(rho))*180/np.pi
-        if self.PSI < 0:
-            self.PSI += 180.0
-        self.DELTA = np.angle(rho,deg=True)
-        if self.DELTA < 0:
-            self.DELTA += 180.0
+        raise NotImplementedError("broken")
+        c_inj_p_spol = self.get_incident_mode_coef("s")
+        c_inj_m_spol = np.asarray(self.S.S11 @ c_inj_p_spol).flatten()
+        c_inj_p_ppol = self.get_incident_mode_coef("p")
+        c_inj_m_ppol = np.asarray(self.S.S11 @ c_inj_p_ppol).flatten()
+        # rho = (self.Sg.S11 @ np.array([0,1]))[1]/(self.Sg.S11 @ np.array([1,0]))[0]
+        # self.PSI = np.arctan(np.abs(rho))*180/np.pi
+        # if self.PSI < 0:
+        #     self.PSI += 180.0
+        # self.DELTA = np.angle(rho,deg=True)
+        # if self.DELTA < 0:
+        #     self.DELTA += 180.0
+        #
+        # return self.PSI, self.DELTA
 
-        return self.PSI, self.DELTA
+    def _save_field(self):
+        self.inj.save_field(None)
+        for i,lay in enumerate(self.layers):
+            lay.save_field(self.Tcumprod[i])
+        self.trn.save_field(self.Tcumprod[-2])
 
-    def solve_fields(self,wl,AOI,slow=False):
-        self.solve(wl,AOI,save_fields=True,slow=slow)
-        self.inj.solve_fields()
-        for lay in self.layers:
-            lay.solve_fields()
-        self.trn.solve_fields()
-
-    def get_internal_field(self,z,pol):
-        c_out = self.Sg.S11 @ pol
-        zz = 1*z
-        if zz < 0:
-            return self.inj.get_internal_field(zz,pol,c_out)
-        for lay in self.layers:
-            if zz < lay.L:
-                return lay.get_internal_field(zz,pol,c_out)
-            zz -= lay.L
-        return self.trn.get_internal_field(zz,pol,c_out)
+    def get_field(self,z,pol,phase = 0):
+        c_inj_p = self.get_incident_mode_coef(pol,phase = phase)
+        c_inj_m = np.asarray(self.S.S11 @ c_inj_p).flatten()
+        index = np.full(len(z),0,dtype=int)
+        for _index,le in enumerate(self.left_edges):
+            index[z>le] = _index + 1
+        E = np.zeros((index.size,c_inj_m.size//2,3)) + 0j
+        mask = index == 0
+        if sum(mask) > 0:
+            E[mask] = self.inj.get_field(z[mask],c_inj_p,c_inj_m)
+        for _index,le in enumerate(self.left_edges):
+            mask = (index == _index + 1)
+            if sum(mask) > 0:
+                E[mask] = self[_index + 1].get_field(z[mask]-le,c_inj_p,c_inj_m)
+        return E

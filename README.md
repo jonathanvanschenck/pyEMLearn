@@ -40,11 +40,18 @@ This package is really intended as a learning tool, rather than a full computati
 The authors would like to thank Dr. Raymond Rumpf (of UTEP) for his extensive [educational resources](https://empossible.net/academics/emp5337/), on which this project is principally based.
 
 # To Do
- - [ ] Add transmittance matrix approach
- - [ ] Create `source` object, which can produce k-vecs and polarization vecs
- - [ ] Create `field` object? which can track E, H and S?
- - [ ] Begin thinking about RCWA
-# Old To Do
+ - [ ] Comment Everything . . .
+ - [ ] Add some descriptive examples
+ - [ ] Add some better examples
+ - [ ] Restructure the catalog
+ - [ ] Add more materials to the catalog
+ - [x] Add transmittance matrix approach
+ - [x] Create `source` object, which can produce k-vecs and polarization vecs
+ - [x] Create `field` object? which can track E?
+ - [ ] Add Poynting vector functionality to `field` object
+ - [x] Begin thinking about RCWA
+ - [ ] Fix RCWA, its broke AF
+# V1 To Do, Obsolete
  - [x] Flesh out interface object with "t" matrix
  - [x] Add interface object to layers objects (and halfplane objects)
  - [ ] Modify utils objects to be more general

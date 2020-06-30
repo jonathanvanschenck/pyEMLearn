@@ -1,6 +1,6 @@
 """Docstring for package"""
 
+import pyEMLearn.core
+import pyEMLearn.geometry
 import pyEMLearn.layers
 import pyEMLearn.materials
-import pyEMLearn.utils
-import pyEMLearn.catalog
