@@ -5,9 +5,8 @@ of various materials
 """
 
 from cmath import sqrt as csqrt
-from numpy import interp,sqrt
+from numpy import interp,sqrt,vectorize,full,all
 
-from pyEMLearn.utils import BiaxialMatrix,UniaxialMatrix
 
 class Material:
     """Docstring for Class"""
@@ -28,6 +27,8 @@ class Material:
         """
         self.name = name
         self.isotropic = isotropic
+        self.er_vec = vectorize(self.er)
+        self.mr_vec = vectorize(self.mr)
 
     @property
     def name(self):
@@ -475,19 +476,52 @@ class LorentzIndex2(LorentzIndex):
         n = csqrt(er)
         return n.real,n.imag
 
-class BiaxialMaterial(Material):
-    def __init__(
-        self,
-        mat_x,mat_y,mat_z,
-        ex,ey,ez,
-        name=None,
-    ):
-        """docstring"""
-        Material.__init__(self,name,isotropic=False)
-        self.materials = [mat_x,mat_y,mat_z]
-        self.ERMatrix = BiaxialMatrix(ex,ey,ez)
+class SpatialMaterial(Material):
+    def __init__(self,mat_list,region_list,name=None):
+        Material.__init__(self, name = name)
+        del self.er_vec
+        del self.mr_vec
 
-    def er(self,wl):
-        return self.ERMatrix(*[mat.er(wl) for mat in self.materials])
-    def mr(self,wl):
-        return np.diag([1.,1.,1.])+0j
+        self.mat_list = mat_list
+        self.region_list = region_list
+
+    def er(self,wl,x,y):
+        # x,y are 1d vectors containing the x and y coordinates at which
+        # to evaluate er
+        er_list = [mat.er(wl) for mat in self.mat_list]
+        er_vec = full(len(x),er_list.pop(0))
+        for region,er in zip(self.region_list,er_list):
+            mask = all([r(x,y) for r in region],axis=0)
+            er_vec[mask] = er
+        return er_vec
+
+    def mr(self,wl,x,y):
+        # x,y are 1d vectors containing the x and y coordinates at which
+        # to evaluate mr
+        mr_list = [mat.mr(wl) for mat in self.mat_list]
+        mr_vec = full(len(x),mr_list.pop(0))
+        for region,mr in zip(self.region_list,mr_list):
+            mask = all([r(x,y) for r in region],axis=0)
+            mr_vec[mask] = mr
+        return mr_vec
+
+    def __add__(self,other):
+        raise NotImplementedError("Cannot add spatial materials")
+
+    @classmethod
+    def from_single(cls,mat):
+        return cls([mat],[],"Spatial: "+mat.name)
+
+    @classmethod
+    def from_pair(cls,base_mat,inserted_mat,region):
+        # base_mat is the material that is the background
+        # inserted_mat is the material which is added
+        # region is a list of boolean functions "[f1(x,y), f2(x,y), ...]" which
+        #  define the boundaries of the inserted_mat. That is, if the for a
+        #  particular x0,y0, if all fi(x0,y0) == True, then x0,y0 is in the region
+        #  see the `geometry` module of some helper functions
+        return cls(
+            [base_mat,inserted_mat],
+            [region],
+            "Spatial: "+base_mat.name+", "+inserted_mat.name
+        )
