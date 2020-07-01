@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pyEMLearn",
-    version="0.2.0",
+    version="0.2.1",
     author="Jonathan D B Van Schenck",
     author_email="vanschej@oregonstate.edu",
     description="A computational E&M package for learning the fundimentals",

@@ -8,6 +8,58 @@ A computational E&amp;M library written in python, intended for learning the fun
 ```
 (or just `pip` if you are on windows, or have aliased your `python3` installation)
 
+# Usage
+`pyEMLearn` works by building up a stack of layers, then simulation an EM wave
+scattering off the system. You can specify the angle of incidence, as well as
+the wavelength of the EM wave and calculate the reflection, transmission and
+internal electric field. An example of that is shown in `examples/sparse_reflectance.py`
+
+This package assumes that all length measurement are given in microns. You can
+ignore this default, but you will not be able to use built in catalog of materials.
+
+## Materials and Layers
+Each `Layer` object in the stack is comprised of a `Materials` object and a thickness
+(possibly 0 or infinity). `pyEMLearn` provides a small catalog of materials in the
+`pyEMLearn.catalog` submodule, which you can check out, as well as some helper
+classes for building your own custom material, using `pyEMLearn.materials`. For
+example, if you want to model one of you layers using a Sellmeier model for the
+index of fraction, use: `pyEMLearn.materials.SellmeierIndex`.
+
+The only `Layer` object currently intended for users is the base `pyEMLearn.layers.Layer`
+class. A list of these are intended to be passed to the system solver object,
+but nothing really else is user-intended.
+
+## System Solver
+The many object that users will interact with is the `pyEMLearn.layers.System`
+class which handles all the simulations and calculation. It takes as its arguments
+a list of `Layer` objects, and then exposes a few methods for calculating various
+simulation parameters. A common workflow is:
+
+```python
+import numpy as np
+import pyEMLearn.layers as lay
+import pyEMLearn.materials as mat
+import pyEMLearn.catalog as cat
+
+# Define the system
+system = lay.System([
+  lay.Layer(cat.dielectrics.BK7,0.1),      # 100nm of BK7 Glass
+  lay.Layer(cat.metals.Ag,0.01),           # 10nm of Silver
+  lay.Layer(mat.ConstantIndex(2.1),0.05)   # 50nm of custom material with n=2.1
+])
+
+system.compile() # Compile the system to prepare for solving
+
+# Define the solution parameters
+wls = np.arange(0.3,0.9,0.01) # pick wavelengths in 10nm steps from 300 to 900nm
+aoi = len(wls)*[0.0]          # normal incidence (expects radians)
+system.solve(wls,aoi)         # solve the system
+
+# Get the results
+R,T = system.get_RT("s")      # get the reflectance and transmission for s-polarized
+                              #  light, results are arrays of the same length wls
+```
+
 # Development
 To install toward developing this package: fork and download this repo from github, open a terminal in the head directory and run:
 ```bash
@@ -51,20 +103,3 @@ The authors would like to thank Dr. Raymond Rumpf (of UTEP) for his extensive [e
  - [ ] Add Poynting vector functionality to `field` object
  - [x] Begin thinking about RCWA
  - [ ] Fix RCWA, its broke AF
-# V1 To Do, Obsolete
- - [x] Flesh out interface object with "t" matrix
- - [x] Add interface object to layers objects (and halfplane objects)
- - [ ] Modify utils objects to be more general
- - [ ] Change materials repr functions to NOT return parameters, put that in a "summary" function
- - [ ] Finish Docstring-ing
- - [x] Restructure the materials catalog
- - [ ] Add more asserts to System.__init__ to make sure that transmission layers arn't actually injection layers, or gap layers arn't actually just thickness zero layers, etc.
- - [x] Improve computational efficiency for LHI materials? (using 2c.pdf)
- - [ ] Spend some time making all the class variable names consistent in their case/-/_ usage
- - [x] Add config and license files
- - [x] Get Setup on PyPi
- - [ ] Add anisotropy functionality
- - [ ] Make some better examples (bragg reflectors)
- - [ ] Add parallelization options for parameter sweep calculations
- - [x] Add ellipsometric variable support
- - [x] Add internal field support
